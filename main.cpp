@@ -122,7 +122,7 @@ int main() {
     Timer timer2;
 
     // 读取图像并转换到浮点类型
-    cv::Mat img = cv::imread(".\\image\\tiananmen.png");
+    cv::Mat img = cv::imread(".\\image\\wuxi_2_0003.jpg");
     img.convertTo(img, CV_32FC3, 1.0 / 255);
 
     // 并行计算
