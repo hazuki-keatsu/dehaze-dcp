@@ -1,4 +1,5 @@
 #include <opencv2/opencv.hpp>
+#include <opencv2/core/ocl.hpp>
 #include <string>
 #include <iostream>
 #include <vector>
@@ -105,6 +106,9 @@ cv::Mat recoverScene(const cv::Mat& img, const cv::Mat& transmission, const cv::
 }
 
 int main() {
+    // 启用OpenCL
+    cv::ocl::setUseOpenCL(true);
+
     // 参数设置
     int patchSize = 15;    // 窗口尺寸
     float omega = 0.95f;   // 去雾强度参数
