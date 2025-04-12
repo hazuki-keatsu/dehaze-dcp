@@ -27,7 +27,8 @@ private:
 
 // 计算暗通道
 cv::Mat calculateDarkChannel(const cv::Mat& img, int patchSize) {
-    cv::Mat dark = cv::Mat::zeros(img.rows, img.cols, CV_32FC1);
+    cv::Mat dark(img.rows, img.cols, CV_32FC1);
+
     std::vector<cv::Mat> channels;
     cv::split(img, channels);
 
@@ -110,12 +111,13 @@ int main() {
     cv::ocl::setUseOpenCL(true);
 
     // 参数设置
-    int patchSize = 15;    // 窗口尺寸
-    float omega = 0.95f;   // 去雾强度参数
+    int patchSize = 3;    // 窗口尺寸
+    float omega = 0.90f;   // 去雾强度参数
     float t0 = 0.1f;       // 透射率下限
 
     // 创建计时器
     Timer timer;
+    Timer timer2;
 
     // 读取图像并转换到浮点类型
     cv::Mat img = cv::imread(".\\image\\tiananmen.png");
@@ -126,20 +128,35 @@ int main() {
     auto darkFuture = std::async(std::launch::async, calculateDarkChannel, img, patchSize);
     cv::Mat dark = darkFuture.get();
 
+    // 输出程序运行时间
+    std::cout << "计算暗通道时间: " << timer.elapsed() << " 毫秒" << std::endl;
+    timer.reset();
+
     // 估计大气光
     auto atomFuture = std::async(std::launch::async, estimateAtmosphericLight, img, dark);
     cv::Vec3f atom = atomFuture.get();
 
+    // 输出程序运行时间
+    std::cout << "估计大气光时间: " << timer.elapsed() << " 毫秒" << std::endl;
+    timer.reset();
+
     // 估计透射率
     auto transmissionFuture = std::async(std::launch::async, estimateTransmission, img, atom, patchSize, omega);
     cv::Mat transmission = transmissionFuture.get();
+
+    // 输出程序运行时间
+    std::cout << "估计透射率时间: " << timer.elapsed() << " 毫秒" << std::endl;
+    timer.reset();
 
     // 恢复无雾图像
     auto resultFuture = std::async(std::launch::async, recoverScene, img, transmission, atom, t0);
     cv::Mat result = resultFuture.get();
 
     // 输出程序运行时间
-    std::cout << "程序运行时间: " << timer.elapsed() << " 毫秒" << std::endl;
+    std::cout << "恢复无雾图像时间: " << timer.elapsed() << " 毫秒" << std::endl;
+
+    // 输出程序运行时间
+    std::cout << "总时间: " << timer2.elapsed() << " 毫秒" << std::endl;
 
     // 转换回8位格式并保存
     result.convertTo(result, CV_8UC3, 255);
