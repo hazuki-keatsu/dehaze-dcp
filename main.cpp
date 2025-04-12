@@ -95,15 +95,15 @@ cv::Mat estimateTransmission(const cv::Mat& img, const cv::Vec3f& atom, int patc
 cv::Mat recoverScene(const cv::Mat& img, const cv::Mat& transmission, const cv::Vec3f& A, float t0) {
     cv::Mat result(img.size(), CV_32FC3);
 
-#pragma omp parallel for
-
-    for (int i = 0; i < img.rows; ++i) {
-        for (int j = 0; j < img.cols; ++j) {
+    cv::parallel_for_(cv::Range(0, img.rows * img.cols), [&](const cv::Range& range) {
+        for (int r = range.start; r < range.end; ++r) {
+            int i = r / img.cols;
+            int j = r % img.cols;
             float t = std::max(transmission.at<float>(i, j), t0);
             cv::Vec3f pixel = (img.at<cv::Vec3f>(i, j) - A) / t + A;
             result.at<cv::Vec3f>(i, j) = pixel;
         }
-    }
+        });
 
     return result;
 }
