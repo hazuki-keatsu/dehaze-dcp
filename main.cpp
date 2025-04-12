@@ -5,6 +5,7 @@
 #include <vector>
 #include <algorithm>
 #include <future>
+#include <omp.h>
 
 // 计时器
 #include <chrono>
@@ -51,21 +52,20 @@ cv::Vec3f estimateAtmosphericLight(const cv::Mat& img, const cv::Mat& dark) {
     // 创建像素值-位置对
     std::vector<std::pair<float, int>> pairs(numPixels);
     for (int i = 0; i < numPixels; ++i) {
-        int row = i / img.cols;
-        int col = i % img.cols;
-        pairs[i] = std::make_pair(dark.at<float>(row, col), i);
+        pairs[i] = std::make_pair(dark.at<float>(i), i);
     }
 
-    // 按暗通道值降序排序
-    std::sort(pairs.begin(), pairs.end(), std::greater<std::pair<float, int>>());
+    // 使用 nth_element 找到前 numSamples 个最大值
+    std::nth_element(pairs.begin(), pairs.begin() + numSamples, pairs.end(), std::greater<std::pair<float, int>>());
 
     // 取最亮像素的平均值
     cv::Vec3f sum(0, 0, 0);
+
+#pragma omp parallel for reduction(+ : sum)
+
     for (int i = 0; i < numSamples; ++i) {
         int idx = pairs[i].second;
-        int row = idx / img.cols;
-        int col = idx % img.cols;
-        sum += img.at<cv::Vec3f>(row, col);
+        sum += img.at<cv::Vec3f>(idx);
     }
 
     return sum / numSamples;
@@ -94,6 +94,8 @@ cv::Mat estimateTransmission(const cv::Mat& img, const cv::Vec3f& atom, int patc
 // 恢复无雾图像
 cv::Mat recoverScene(const cv::Mat& img, const cv::Mat& transmission, const cv::Vec3f& A, float t0) {
     cv::Mat result(img.size(), CV_32FC3);
+
+#pragma omp parallel for
 
     for (int i = 0; i < img.rows; ++i) {
         for (int j = 0; j < img.cols; ++j) {
