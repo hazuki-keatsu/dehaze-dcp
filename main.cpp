@@ -3,6 +3,7 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <future>
 
 // 计时器
 #include <chrono>
@@ -116,17 +117,22 @@ int main() {
     cv::Mat img = cv::imread(".\\image\\tiananmen.png");
     img.convertTo(img, CV_32FC3, 1.0 / 255);
 
+    // 并行计算
     // 计算暗通道
-    cv::Mat dark = calculateDarkChannel(img, patchSize);
+    auto darkFuture = std::async(std::launch::async, calculateDarkChannel, img, patchSize);
+    cv::Mat dark = darkFuture.get();
 
     // 估计大气光
-    cv::Vec3f atom = estimateAtmosphericLight(img, dark);
+    auto atomFuture = std::async(std::launch::async, estimateAtmosphericLight, img, dark);
+    cv::Vec3f atom = atomFuture.get();
 
     // 估计透射率
-    cv::Mat transmission = estimateTransmission(img, atom, patchSize, omega);
+    auto transmissionFuture = std::async(std::launch::async, estimateTransmission, img, atom, patchSize, omega);
+    cv::Mat transmission = transmissionFuture.get();
 
     // 恢复无雾图像
-    cv::Mat result = recoverScene(img, transmission, atom, t0);
+    auto resultFuture = std::async(std::launch::async, recoverScene, img, transmission, atom, t0);
+    cv::Mat result = resultFuture.get();
 
     // 输出程序运行时间
     std::cout << "程序运行时间: " << timer.elapsed() << " 毫秒" << std::endl;
