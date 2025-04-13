@@ -27,7 +27,7 @@ private:
 };
 
 // 计算暗通道
-cv::Mat calculateDarkChannel(const cv::Mat& img, int patchSize) {
+inline cv::Mat calculateDarkChannel(const cv::Mat& img, int patchSize) {
     cv::Mat dark(img.rows, img.cols, CV_32FC1);
 
     std::vector<cv::Mat> channels;
@@ -45,7 +45,7 @@ cv::Mat calculateDarkChannel(const cv::Mat& img, int patchSize) {
 }
 
 // 估计大气光
-cv::Vec3f estimateAtmosphericLight(const cv::Mat& img, const cv::Mat& dark) {
+inline cv::Vec3f estimateAtmosphericLight(const cv::Mat& img, const cv::Mat& dark) {
     int numPixels = img.rows * img.cols;
     int numSamples = std::max(numPixels / 1000, 1); // 取前0.1%的像素
 
@@ -61,18 +61,21 @@ cv::Vec3f estimateAtmosphericLight(const cv::Mat& img, const cv::Mat& dark) {
     // 取最亮像素的平均值
     cv::Vec3f sum(0, 0, 0);
 
-#pragma omp parallel for reduction(+ : sum)
-
-    for (int i = 0; i < numSamples; ++i) {
-        int idx = pairs[i].second;
-        sum += img.at<cv::Vec3f>(idx);
-    }
+    cv::parallel_for_(cv::Range(0, numSamples), [&](const cv::Range& range) {
+        cv::Vec3f localSum(0, 0, 0);
+        for (int i = range.start; i < range.end; ++i) {
+            int idx = pairs[i].second;
+            localSum += img.at<cv::Vec3f>(idx);
+        }
+#pragma omp critical
+        sum += localSum;
+        });
 
     return sum / numSamples;
 }
 
 // 估计透射率
-cv::Mat estimateTransmission(const cv::Mat& img, const cv::Vec3f& atom, int patchSize, float omega) {
+inline cv::Mat estimateTransmission(const cv::Mat& img, const cv::Vec3f& atom, int patchSize, float omega) {
     cv::Mat normalized(img.size(), CV_32FC3);
 
     // 归一化图像
@@ -92,7 +95,7 @@ cv::Mat estimateTransmission(const cv::Mat& img, const cv::Vec3f& atom, int patc
 }
 
 // 恢复无雾图像
-cv::Mat recoverScene(const cv::Mat& img, const cv::Mat& transmission, const cv::Vec3f& A, float t0) {
+inline cv::Mat recoverScene(const cv::Mat& img, const cv::Mat& transmission, const cv::Vec3f& A, float t0) {
     cv::Mat result(img.size(), CV_32FC3);
 
     cv::parallel_for_(cv::Range(0, img.rows * img.cols), [&](const cv::Range& range) {
@@ -113,17 +116,17 @@ int main() {
     cv::ocl::setUseOpenCL(true);
 
     // 参数设置
-    int patchSize = 3;    // 窗口尺寸
-    float omega = 0.90f;   // 去雾强度参数
+    int patchSize = 15;    // 窗口尺寸
+    float omega = 0.95f;   // 去雾强度参数
     float t0 = 0.1f;       // 透射率下限
+
+    // 读取图像并转换到浮点类型
+    cv::Mat img = cv::imread(".\\images\\wuxi_2_0000.jpg");
+    img.convertTo(img, CV_32FC3, 1.0 / 255);
 
     // 创建计时器
     Timer timer;
     Timer timer2;
-
-    // 读取图像并转换到浮点类型
-    cv::Mat img = cv::imread(".\\image\\tiananmen.png");
-    img.convertTo(img, CV_32FC3, 1.0 / 255);
 
     // 并行计算
     // 计算暗通道
