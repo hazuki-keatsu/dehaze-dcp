@@ -1,6 +1,5 @@
-# 须知
+# dehaze-dcp
 
-![解决方案](https://www.zhihu.com/question/482457348)  
+## 简介
 
-1. tbb库 `sudo apt-get install libtbb-dev`  
-2. openmp库 `gcc -fopenmp file.c -o file`  
+这是一个使用 opencv 库编写的 dcp 暗通道先验算法，主要用来给图片去雾。
