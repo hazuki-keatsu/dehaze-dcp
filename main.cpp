@@ -28,13 +28,24 @@ private:
 
 // 计算暗通道
 cv::Mat calculateDarkChannel(const cv::Mat& img, int patchSize) {
-    cv::Mat dark;
-    cv::erode(img, dark, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(patchSize, patchSize)));
+    cv::Mat dark(img.rows, img.cols, CV_32FC1);
+
+    std::vector<cv::Mat> channels;
+    cv::split(img, channels);
+
+    // 计算每个像素的RGB最小值
+    cv::min(channels[0], channels[1], dark);
+    cv::min(dark, channels[2], dark);
+
+    // 最小值滤波
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(patchSize, patchSize));
+    cv::erode(dark, dark, kernel);
+
     return dark;
 }
 
 // 估计大气光
-float estimateAtmosphericLight(const cv::Mat& img, const cv::Mat& dark) {
+cv::Vec3f estimateAtmosphericLight(const cv::Mat& img, const cv::Mat& dark) {
     int numPixels = img.rows * img.cols;
     int numSamples = std::max(numPixels / 1000, 1); // 取前0.1%的像素
 
@@ -44,40 +55,53 @@ float estimateAtmosphericLight(const cv::Mat& img, const cv::Mat& dark) {
         pairs[i] = std::make_pair(dark.at<float>(i), i);
     }
 
-    // 使用 partial_sort 找到前 numSamples 个最大值
-    std::partial_sort(pairs.begin(), pairs.begin() + numSamples, pairs.end(), std::greater<std::pair<float, int>>());
+    // 使用 nth_element 找到前 numSamples 个最大值
+    std::nth_element(pairs.begin(), pairs.begin() + numSamples, pairs.end(), std::greater<std::pair<float, int>>());
 
     // 取最亮像素的平均值
-    float sum = 0.0f;
+    cv::Vec3f sum(0, 0, 0);
 
 #pragma omp parallel for reduction(+ : sum)
+
     for (int i = 0; i < numSamples; ++i) {
         int idx = pairs[i].second;
-        sum += img.at<float>(idx);
+        sum += img.at<cv::Vec3f>(idx);
     }
 
     return sum / numSamples;
 }
 
 // 估计透射率
-cv::Mat estimateTransmission(const cv::Mat& img, float atom, int patchSize, float omega) {
-    cv::Mat normalized = img / atom;
+cv::Mat estimateTransmission(const cv::Mat& img, const cv::Vec3f& atom, int patchSize, float omega) {
+    cv::Mat normalized(img.size(), CV_32FC3);
+
+    // 归一化图像
+    for (int i = 0; i < img.rows; ++i) {
+        for (int j = 0; j < img.cols; ++j) {
+            cv::Vec3f pixel = img.at<cv::Vec3f>(i, j);
+            normalized.at<cv::Vec3f>(i, j) = cv::Vec3f(pixel[0] / atom[0], pixel[1] / atom[1], pixel[2] / atom[2]);
+        }
+    }
+
+    // 计算归一化图像的暗通道
     cv::Mat dark = calculateDarkChannel(normalized, patchSize);
+
+    // 计算透射率
     cv::Mat transmission = 1 - omega * dark;
     return transmission;
 }
 
 // 恢复无雾图像
-cv::Mat recoverScene(const cv::Mat& img, const cv::Mat& transmission, float A, float t0) {
-    cv::Mat result(img.size(), CV_32FC1);
+cv::Mat recoverScene(const cv::Mat& img, const cv::Mat& transmission, const cv::Vec3f& A, float t0) {
+    cv::Mat result(img.size(), CV_32FC3);
 
     cv::parallel_for_(cv::Range(0, img.rows * img.cols), [&](const cv::Range& range) {
         for (int r = range.start; r < range.end; ++r) {
             int i = r / img.cols;
             int j = r % img.cols;
             float t = std::max(transmission.at<float>(i, j), t0);
-            float pixel = (img.at<float>(i, j) - A) / t + A;
-            result.at<float>(i, j) = pixel;
+            cv::Vec3f pixel = (img.at<cv::Vec3f>(i, j) - A) / t + A;
+            result.at<cv::Vec3f>(i, j) = pixel;
         }
         });
 
@@ -89,21 +113,17 @@ int main() {
     cv::ocl::setUseOpenCL(true);
 
     // 参数设置
-    int patchSize = 5;    // 窗口尺寸
-    float omega = 0.9f;   // 去雾强度参数
+    int patchSize = 3;    // 窗口尺寸
+    float omega = 0.90f;   // 去雾强度参数
     float t0 = 0.1f;       // 透射率下限
 
     // 创建计时器
     Timer timer;
     Timer timer2;
 
-    // 读取长红外灰度图像并转换到浮点类型
-    cv::Mat img = cv::imread(".\\image\\wuxi_2_0003.jpg", cv::IMREAD_GRAYSCALE);
-    if (img.empty()) {
-        std::cerr << "无法读取图像文件" << std::endl;
-        return -1;
-    }
-    img.convertTo(img, CV_32FC1, 1.0 / 255); // 假设长红外图像是8位
+    // 读取图像并转换到浮点类型
+    cv::Mat img = cv::imread(".\\image\\tiananmen.png");
+    img.convertTo(img, CV_32FC3, 1.0 / 255);
 
     // 并行计算
     // 计算暗通道
@@ -116,7 +136,7 @@ int main() {
 
     // 估计大气光
     auto atomFuture = std::async(std::launch::async, estimateAtmosphericLight, img, dark);
-    float atom = atomFuture.get();
+    cv::Vec3f atom = atomFuture.get();
 
     // 输出程序运行时间
     std::cout << "估计大气光时间: " << timer.elapsed() << " 毫秒" << std::endl;
@@ -141,7 +161,7 @@ int main() {
     std::cout << "总时间: " << timer2.elapsed() << " 毫秒" << std::endl;
 
     // 转换回8位格式并保存
-    result.convertTo(result, CV_8UC1, 255);
+    result.convertTo(result, CV_8UC3, 255);
     cv::imwrite("dehazed_result.jpg", result);
 
     // 预览图片
