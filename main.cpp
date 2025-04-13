@@ -27,7 +27,7 @@ private:
 };
 
 // 计算暗通道
-cv::Mat calculateDarkChannel(const cv::Mat& img, int patchSize) {
+inline cv::Mat calculateDarkChannel(const cv::Mat& img, int patchSize) {
     cv::Mat dark(img.rows, img.cols, CV_32FC1);
 
     std::vector<cv::Mat> channels;
@@ -45,7 +45,7 @@ cv::Mat calculateDarkChannel(const cv::Mat& img, int patchSize) {
 }
 
 // 估计大气光
-cv::Vec3f estimateAtmosphericLight(const cv::Mat& img, const cv::Mat& dark) {
+inline cv::Vec3f estimateAtmosphericLight(const cv::Mat& img, const cv::Mat& dark) {
     int numPixels = img.rows * img.cols;
     int numSamples = std::max(numPixels / 1000, 1); // 取前0.1%的像素
 
@@ -72,7 +72,7 @@ cv::Vec3f estimateAtmosphericLight(const cv::Mat& img, const cv::Mat& dark) {
 }
 
 // 估计透射率
-cv::Mat estimateTransmission(const cv::Mat& img, const cv::Vec3f& atom, int patchSize, float omega) {
+inline cv::Mat estimateTransmission(const cv::Mat& img, const cv::Vec3f& atom, int patchSize, float omega) {
     cv::Mat normalized(img.size(), CV_32FC3);
 
     // 归一化图像
@@ -92,7 +92,7 @@ cv::Mat estimateTransmission(const cv::Mat& img, const cv::Vec3f& atom, int patc
 }
 
 // 恢复无雾图像
-cv::Mat recoverScene(const cv::Mat& img, const cv::Mat& transmission, const cv::Vec3f& A, float t0) {
+inline cv::Mat recoverScene(const cv::Mat& img, const cv::Mat& transmission, const cv::Vec3f& A, float t0) {
     cv::Mat result(img.size(), CV_32FC3);
 
     cv::parallel_for_(cv::Range(0, img.rows * img.cols), [&](const cv::Range& range) {
