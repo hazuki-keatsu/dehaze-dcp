@@ -61,12 +61,15 @@ inline cv::Vec3f estimateAtmosphericLight(const cv::Mat& img, const cv::Mat& dar
     // 取最亮像素的平均值
     cv::Vec3f sum(0, 0, 0);
 
-#pragma omp parallel for reduction(+ : sum)
-
-    for (int i = 0; i < numSamples; ++i) {
-        int idx = pairs[i].second;
-        sum += img.at<cv::Vec3f>(idx);
-    }
+    cv::parallel_for_(cv::Range(0, numSamples), [&](const cv::Range& range) {
+        cv::Vec3f localSum(0, 0, 0);
+        for (int i = range.start; i < range.end; ++i) {
+            int idx = pairs[i].second;
+            localSum += img.at<cv::Vec3f>(idx);
+        }
+#pragma omp critical
+        sum += localSum;
+        });
 
     return sum / numSamples;
 }
@@ -113,17 +116,17 @@ int main() {
     cv::ocl::setUseOpenCL(true);
 
     // 参数设置
-    int patchSize = 3;    // 窗口尺寸
-    float omega = 0.90f;   // 去雾强度参数
+    int patchSize = 15;    // 窗口尺寸
+    float omega = 0.95f;   // 去雾强度参数
     float t0 = 0.1f;       // 透射率下限
+
+    // 读取图像并转换到浮点类型
+    cv::Mat img = cv::imread(".\\images\\wuxi_2_0000.jpg");
+    img.convertTo(img, CV_32FC3, 1.0 / 255);
 
     // 创建计时器
     Timer timer;
     Timer timer2;
-
-    // 读取图像并转换到浮点类型
-    cv::Mat img = cv::imread(".\\image\\tiananmen.png");
-    img.convertTo(img, CV_32FC3, 1.0 / 255);
 
     // 并行计算
     // 计算暗通道
